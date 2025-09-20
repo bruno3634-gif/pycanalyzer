@@ -1,3 +1,4 @@
 PyQt6
 cantools
 pyserial
+python-can[pcan]

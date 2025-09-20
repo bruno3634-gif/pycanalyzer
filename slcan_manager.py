@@ -208,9 +208,17 @@ class SLCANManager:
         serial_response = self.send_command("N")
         print(f"Serial response: {repr(serial_response)}")
         
+        # Detect device type
+        device_type = "Unknown"
+        if version_response and "WeAct" in version_response:
+            device_type = "WeAct Studio"
+        elif version_response and version_response.strip() == '\x07':
+            device_type = "Generic (limited commands)"
+        
         return {
             "version": version_response,
-            "serial": serial_response
+            "serial": serial_response,
+            "type": device_type
         }
     
     def send_message(self, msg_id, data, extended=False):
@@ -224,7 +232,98 @@ class SLCANManager:
                 print(f"Error: Data length {len(data)} exceeds maximum of 8 bytes")
                 return False
             
-            # Format message - try standard SLCAN format first
+            # Check if this is a WeAct Studio device
+            device_info = self.check_device_info()
+            is_weact = device_info and device_info.get("type") == "WeAct Studio"
+            
+            if is_weact:
+                print("Detected WeAct Studio device - trying WeAct-specific formats...")
+                return self._send_message_weact(msg_id, data, extended)
+            else:
+                return self._send_message_standard(msg_id, data, extended)
+            
+        except Exception as e:
+            print(f"Error sending message: {e}")
+            return False
+    
+    def _send_message_standard(self, msg_id, data, extended=False):
+        """Send message using standard SLCAN format"""
+        # Format message - try standard SLCAN format first
+        if extended:
+            cmd = f"T{msg_id:08X}{len(data)}"
+        else:
+            cmd = f"t{msg_id:03X}{len(data)}"
+        
+        for byte in data:
+            cmd += f"{byte:02X}"
+        
+        response = self.send_command(cmd)
+        print(f"Send message command: {cmd}")
+        print(f"Send message response: {repr(response)} (expected 'z')")
+        
+        # Check for success - should be 'z' but some devices might respond differently
+        if response:
+            response_clean = response.strip()
+            if response_clean == 'z':
+                print("Message sent successfully!")
+                return True
+            elif response_clean == '\x07':
+                print("Device returned error (\\x07) - trying alternative format...")
+                # Try alternative format (some cheap devices need different formatting)
+                return self._try_alternative_send_formats(msg_id, data, extended)
+            elif response_clean == '\r' or response_clean == '':
+                print("Device returned \\r - some devices accept this as success")
+                return True
+            else:
+                print(f"Unexpected response: {repr(response_clean)}")
+                return False
+        else:
+            print("No response from device")
+            return False
+    
+    def _send_message_weact(self, msg_id, data, extended=False):
+        """Send message using WeAct Studio specific formats"""
+        print("Trying WeAct Studio specific message formats...")
+        
+        # WeAct Format 1: Try simpler format without DLC
+        try:
+            if extended:
+                cmd = f"T{msg_id:08X}"
+            else:
+                cmd = f"t{msg_id:03X}"
+            
+            # Add data without length prefix
+            for byte in data:
+                cmd += f"{byte:02X}"
+            
+            response = self.send_command(cmd)
+            print(f"WeAct format 1: {cmd} -> {repr(response)}")
+            if response and response.strip() in ['z', '\r', '', 'OK']:
+                print("WeAct format 1 successful!")
+                return True
+        except Exception as e:
+            print(f"WeAct format 1 failed: {e}")
+        
+        # WeAct Format 2: Try with uppercase T/t and different structure
+        try:
+            if extended:
+                cmd = f"T{msg_id:08X}{len(data):01X}"
+            else:
+                cmd = f"t{msg_id:03X}{len(data):01X}"
+            
+            for byte in data:
+                cmd += f"{byte:02X}"
+            
+            response = self.send_command(cmd)
+            print(f"WeAct format 2: {cmd} -> {repr(response)}")
+            if response and response.strip() in ['z', '\r', '', 'OK']:
+                print("WeAct format 2 successful!")
+                return True
+        except Exception as e:
+            print(f"WeAct format 2 failed: {e}")
+        
+        # WeAct Format 3: Try with line ending
+        try:
             if extended:
                 cmd = f"T{msg_id:08X}{len(data)}"
             else:
@@ -233,33 +332,58 @@ class SLCANManager:
             for byte in data:
                 cmd += f"{byte:02X}"
             
-            response = self.send_command(cmd)
-            print(f"Send message command: {cmd}")
-            print(f"Send message response: {repr(response)} (expected 'z')")
+            cmd += "\n"  # Add newline
             
-            # Check for success - should be 'z' but some devices might respond differently
-            if response:
-                response_clean = response.strip()
-                if response_clean == 'z':
-                    print("Message sent successfully!")
-                    return True
-                elif response_clean == '\x07':
-                    print("Device returned error (\\x07) - trying alternative format...")
-                    # Try alternative format (some cheap devices need different formatting)
-                    return self._try_alternative_send_formats(msg_id, data, extended)
-                elif response_clean == '\r' or response_clean == '':
-                    print("Device returned \\r - some devices accept this as success")
-                    return True
-                else:
-                    print(f"Unexpected response: {repr(response_clean)}")
-                    return False
-            else:
-                print("No response from device")
-                return False
-            
+            response = self.send_command(cmd.rstrip())  # Remove newline for send_command
+            print(f"WeAct format 3: {cmd.strip()} -> {repr(response)}")
+            if response and response.strip() in ['z', '\r', '', 'OK']:
+                print("WeAct format 3 successful!")
+                return True
         except Exception as e:
-            print(f"Error sending message: {e}")
+            print(f"WeAct format 3 failed: {e}")
+        
+        # WeAct Format 4: Try minimal format
+        try:
+            cmd = f"t{msg_id:X}#"
+            for byte in data:
+                cmd += f"{byte:02X}"
+            
+            response = self.send_command(cmd)
+            print(f"WeAct format 4: {cmd} -> {repr(response)}")
+            if response and response.strip() in ['z', '\r', '', 'OK']:
+                print("WeAct format 4 successful!")
+                return True
+        except Exception as e:
+            print(f"WeAct format 4 failed: {e}")
+        
+        print("All WeAct formats failed - device may be receive-only")
+        return False
+    
+    def test_weact_commands(self):
+        """Test various commands specific to WeAct Studio devices"""
+        if not self.is_connected:
             return False
+        
+        print("Testing WeAct Studio specific commands...")
+        
+        # Test commands that WeAct devices might support
+        test_commands = [
+            ("V", "Version"),
+            ("v", "Version (lowercase)"),
+            ("F", "Status flags"),
+            ("W", "Write configuration"),
+            ("M", "Monitor mode"),
+            ("A", "Acceptance filter"),
+            ("a", "Acceptance mask"),
+        ]
+        
+        results = {}
+        for cmd, desc in test_commands:
+            response = self.send_command(cmd)
+            results[cmd] = response
+            print(f"  {desc} ({cmd}): {repr(response)}")
+        
+        return results
     
     def _try_alternative_send_formats(self, msg_id, data, extended=False):
         """Try alternative message formats for devices that don't support standard SLCAN"""
