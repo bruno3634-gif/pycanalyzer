@@ -12,6 +12,7 @@ from slcan_manager import SLCANManager
 from pcan_manager import PCANManager
 from transmit_window import TransmitWindow
 from log_replay_window import LogReplayWindow
+from filter_window import FilterWindow
 import random, datetime, json
 
 class SLCANConnectionDialog(QDialog):
@@ -638,6 +639,33 @@ class MainWindow(QMainWindow):
         self.transmit_menu.addAction(self.open_log_replay_action)
         print("Transmit menu and action created successfully")
 
+        # Filter menu
+        self.filter_menu = QMenu("Filters", self)
+        self.menu_bar.addMenu(self.filter_menu)
+        self.open_include_filter_action = QAction("Include Only Window", self)
+        self.open_include_filter_action.triggered.connect(self.open_include_filter_window)
+        self.filter_menu.addAction(self.open_include_filter_action)
+        
+        self.open_exclude_filter_action = QAction("Exclude Window", self)
+        self.open_exclude_filter_action.triggered.connect(self.open_exclude_filter_window)
+        self.filter_menu.addAction(self.open_exclude_filter_action)
+        
+        self.filter_menu.addSeparator()
+        
+        self.main_filter_include_action = QAction("Enable Main Window Include Filter", self)
+        self.main_filter_include_action.setCheckable(True)
+        self.main_filter_include_action.triggered.connect(self.toggle_main_include_filter)
+        self.filter_menu.addAction(self.main_filter_include_action)
+        
+        self.main_filter_exclude_action = QAction("Enable Main Window Exclude Filter", self)
+        self.main_filter_exclude_action.setCheckable(True)
+        self.main_filter_exclude_action.triggered.connect(self.toggle_main_exclude_filter)
+        self.filter_menu.addAction(self.main_filter_exclude_action)
+        
+        self.config_main_filter_action = QAction("Configure Main Window Filters...", self)
+        self.config_main_filter_action.triggered.connect(self.configure_main_filters)
+        self.filter_menu.addAction(self.config_main_filter_action)
+
         # Status layout
         self.status_layout = QHBoxLayout()
         self.label_status = QLabel("Status: Disconnected")
@@ -681,6 +709,16 @@ class MainWindow(QMainWindow):
         self.received_messages = {}
         self.transmit_window = None
         self.log_replay_window = None
+        
+        # Filter windows
+        self.include_filter_window = None
+        self.exclude_filter_window = None
+        
+        # Main window filtering
+        self.main_include_filter_enabled = False
+        self.main_exclude_filter_enabled = False
+        self.main_include_ids = set()
+        self.main_exclude_ids = set()
 
         # IDs fixos
         self.test_ids = [0x100,0x101,0x102,0x103,0x104]
@@ -705,12 +743,39 @@ class MainWindow(QMainWindow):
 
         # Table will be initialized by initialize_test_messages() if test messages are enabled
     
+    def should_show_message_in_main(self, can_id):
+        """Check if a message should be shown in the main window based on filters"""
+        if self.main_include_filter_enabled:
+            if len(self.main_include_ids) == 0:
+                return True  # No include filters = show all
+            return can_id in self.main_include_ids
+        elif self.main_exclude_filter_enabled:
+            if len(self.main_exclude_ids) == 0:
+                return True  # No exclude filters = show all
+            return can_id not in self.main_exclude_ids
+        else:
+            return True  # No filters enabled = show all
+
+    def get_filtered_test_ids(self):
+        """Get test IDs that should be shown based on main window filters"""
+        if not (self.main_include_filter_enabled or self.main_exclude_filter_enabled):
+            return self.test_ids  # No filters = show all
+        
+        filtered_ids = []
+        for test_id in self.test_ids:
+            if self.should_show_message_in_main(test_id):
+                filtered_ids.append(test_id)
+        return filtered_ids
+
     def initialize_test_messages(self):
         """Initialize test message generation based on configuration"""
         if self.enable_test_messages:
-            # Initialize table with test IDs
-            self.table.setRowCount(len(self.test_ids))
-            for i,row_id in enumerate(self.test_ids):
+            # Get filtered test IDs
+            filtered_ids = self.get_filtered_test_ids()
+            
+            # Initialize table with filtered test IDs
+            self.table.setRowCount(len(filtered_ids))
+            for i, row_id in enumerate(filtered_ids):
                 self.set_table_item(i,0,f"0x{row_id:X}")
                 self.set_table_item(i,1,"STD")
                 self.set_table_item(i,2,"8")
@@ -725,6 +790,8 @@ class MainWindow(QMainWindow):
             self.timer.start(self.test_message_interval)
             if self.verbose_logging:
                 print(f"✓ Test message timer started with {self.test_message_interval}ms interval")
+                if len(filtered_ids) != len(self.test_ids):
+                    print(f"✓ Showing {len(filtered_ids)}/{len(self.test_ids)} test IDs due to filters")
         else:
             # Keep table empty when test messages are disabled
             self.table.setRowCount(0)
@@ -810,6 +877,227 @@ class MainWindow(QMainWindow):
             print(f"Error opening log replay window: {e}")
             import traceback
             traceback.print_exc()
+    
+    def open_include_filter_window(self):
+        """Open the include-only filter window"""
+        print("Opening include filter window...")
+        try:
+            if self.include_filter_window is None:
+                print("Creating new include filter window...")
+                self.include_filter_window = FilterWindow(self, "include")
+                print("Include filter window created successfully")
+            
+            print("Showing include filter window...")
+            self.include_filter_window.show()
+            self.include_filter_window.raise_()
+            self.include_filter_window.activateWindow()
+            print("Include filter window should be visible now")
+        except Exception as e:
+            print(f"Error opening include filter window: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def open_exclude_filter_window(self):
+        """Open the exclude filter window"""
+        print("Opening exclude filter window...")
+        try:
+            if self.exclude_filter_window is None:
+                print("Creating new exclude filter window...")
+                self.exclude_filter_window = FilterWindow(self, "exclude")
+                print("Exclude filter window created successfully")
+            
+            print("Showing exclude filter window...")
+            self.exclude_filter_window.show()
+            self.exclude_filter_window.raise_()
+            self.exclude_filter_window.activateWindow()
+            print("Exclude filter window should be visible now")
+        except Exception as e:
+            print(f"Error opening exclude filter window: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def toggle_main_include_filter(self):
+        """Toggle the main window include filter"""
+        self.main_include_filter_enabled = self.main_filter_include_action.isChecked()
+        if self.main_include_filter_enabled:
+            self.main_filter_exclude_action.setChecked(False)
+            self.main_exclude_filter_enabled = False
+        self.refresh_table_for_filters()
+        print(f"Main include filter: {'enabled' if self.main_include_filter_enabled else 'disabled'}")
+    
+    def toggle_main_exclude_filter(self):
+        """Toggle the main window exclude filter"""
+        self.main_exclude_filter_enabled = self.main_filter_exclude_action.isChecked()
+        if self.main_exclude_filter_enabled:
+            self.main_filter_include_action.setChecked(False)
+            self.main_include_filter_enabled = False
+        self.refresh_table_for_filters()
+        print(f"Main exclude filter: {'enabled' if self.main_exclude_filter_enabled else 'disabled'}")
+    
+    def refresh_table_for_filters(self):
+        """Refresh the main window table when filters change"""
+        if self.enable_test_messages:
+            # Re-initialize test messages with new filters
+            self.initialize_test_messages()
+        else:
+            # For real messages, we need to rebuild the table
+            # This is more complex as we need to track which messages to show
+            # For now, we'll just clear and let incoming messages repopulate
+            filtered_messages = {}
+            for can_id, msg in self.received_messages.items():
+                if self.should_show_message_in_main(can_id):
+                    filtered_messages[can_id] = msg
+            
+            # Rebuild table with filtered messages
+            self.table.setRowCount(len(filtered_messages))
+            for i, (can_id, msg) in enumerate(sorted(filtered_messages.items())):
+                # Set up the row
+                id_item = QTableWidgetItem(f"0x{can_id:X}")
+                id_item.setData(Qt.ItemDataRole.UserRole, can_id)
+                self.table.setItem(i, 0, id_item)
+                
+                # Update the row with message data
+                self.update_row_with_message(i, msg)
+    
+    def configure_main_filters(self):
+        """Open dialog to configure main window filters"""
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QListWidget, QMessageBox, QGroupBox
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Configure Main Window Filters")
+        dialog.resize(500, 400)
+        
+        layout = QVBoxLayout()
+        dialog.setLayout(layout)
+        
+        # Include filter section
+        include_group = QGroupBox("Include Filter (show only these IDs)")
+        include_layout = QVBoxLayout()
+        include_group.setLayout(include_layout)
+        layout.addWidget(include_group)
+        
+        include_input_layout = QHBoxLayout()
+        include_layout.addLayout(include_input_layout)
+        
+        include_input_layout.addWidget(QLabel("Add ID:"))
+        include_input = QLineEdit()
+        include_input.setPlaceholderText("0x100, 256, etc.")
+        include_input_layout.addWidget(include_input)
+        
+        include_add_btn = QPushButton("Add")
+        include_input_layout.addWidget(include_add_btn)
+        
+        include_list = QListWidget()
+        include_layout.addWidget(include_list)
+        
+        include_remove_btn = QPushButton("Remove Selected")
+        include_layout.addWidget(include_remove_btn)
+        
+        # Exclude filter section
+        exclude_group = QGroupBox("Exclude Filter (hide these IDs)")
+        exclude_layout = QVBoxLayout()
+        exclude_group.setLayout(exclude_layout)
+        layout.addWidget(exclude_group)
+        
+        exclude_input_layout = QHBoxLayout()
+        exclude_layout.addLayout(exclude_input_layout)
+        
+        exclude_input_layout.addWidget(QLabel("Add ID:"))
+        exclude_input = QLineEdit()
+        exclude_input.setPlaceholderText("0x100, 256, etc.")
+        exclude_input_layout.addWidget(exclude_input)
+        
+        exclude_add_btn = QPushButton("Add")
+        exclude_input_layout.addWidget(exclude_add_btn)
+        
+        exclude_list = QListWidget()
+        exclude_layout.addWidget(exclude_list)
+        
+        exclude_remove_btn = QPushButton("Remove Selected")
+        exclude_layout.addWidget(exclude_remove_btn)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        layout.addLayout(button_layout)
+        
+        ok_btn = QPushButton("OK")
+        cancel_btn = QPushButton("Cancel")
+        button_layout.addWidget(ok_btn)
+        button_layout.addWidget(cancel_btn)
+        
+        # Populate current filters
+        def update_include_list():
+            include_list.clear()
+            for can_id in sorted(self.main_include_ids):
+                include_list.addItem(f"0x{can_id:X} ({can_id})")
+                
+        def update_exclude_list():
+            exclude_list.clear()
+            for can_id in sorted(self.main_exclude_ids):
+                exclude_list.addItem(f"0x{can_id:X} ({can_id})")
+        
+        def add_include_id():
+            try:
+                id_text = include_input.text().strip()
+                if id_text.startswith('0x'):
+                    can_id = int(id_text, 16)
+                else:
+                    can_id = int(id_text)
+                self.main_include_ids.add(can_id)
+                update_include_list()
+                include_input.clear()
+            except ValueError:
+                QMessageBox.warning(dialog, "Invalid ID", "Please enter a valid CAN ID")
+        
+        def add_exclude_id():
+            try:
+                id_text = exclude_input.text().strip()
+                if id_text.startswith('0x'):
+                    can_id = int(id_text, 16)
+                else:
+                    can_id = int(id_text)
+                self.main_exclude_ids.add(can_id)
+                update_exclude_list()
+                exclude_input.clear()
+            except ValueError:
+                QMessageBox.warning(dialog, "Invalid ID", "Please enter a valid CAN ID")
+        
+        def remove_include_selected():
+            current = include_list.currentItem()
+            if current:
+                id_text = current.text().split()[0]
+                can_id = int(id_text, 16)
+                self.main_include_ids.discard(can_id)
+                update_include_list()
+        
+        def remove_exclude_selected():
+            current = exclude_list.currentItem()
+            if current:
+                id_text = current.text().split()[0]
+                can_id = int(id_text, 16)
+                self.main_exclude_ids.discard(can_id)
+                update_exclude_list()
+        
+        # Connect signals
+        include_add_btn.clicked.connect(add_include_id)
+        exclude_add_btn.clicked.connect(add_exclude_id)
+        include_remove_btn.clicked.connect(remove_include_selected)
+        exclude_remove_btn.clicked.connect(remove_exclude_selected)
+        include_input.returnPressed.connect(add_include_id)
+        exclude_input.returnPressed.connect(add_exclude_id)
+        
+        def on_ok():
+            self.refresh_table_for_filters()
+            dialog.accept()
+        
+        ok_btn.clicked.connect(on_ok)
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        # Initial population
+        update_include_list()
+        update_exclude_list()
+        
+        dialog.exec()
     
     def on_slcan_message(self, message):
         """Handle incoming SLCAN messages"""
@@ -963,7 +1251,7 @@ class MainWindow(QMainWindow):
                 id_item = self.table.item(row, 0)
                 if id_item:
                     displayed_id = id_item.data(Qt.ItemDataRole.UserRole)
-                    if displayed_id in self.received_messages:
+                    if displayed_id in self.received_messages and self.should_show_message_in_main(displayed_id):
                         msg = self.received_messages[displayed_id]
                         self.update_row_with_message(row, msg)
         else:
@@ -971,7 +1259,13 @@ class MainWindow(QMainWindow):
             if self.verbose_logging:
                 print("Generating test messages...")
             
-            for i,row_id in enumerate(self.test_ids):
+            # Get filtered test IDs for current display
+            filtered_ids = self.get_filtered_test_ids()
+            
+            for i, row_id in enumerate(filtered_ids):
+                if i >= self.table.rowCount():
+                    break  # Safety check
+                    
                 msg={"id":row_id,"type":"STD","data":[random.randint(0,255) for _ in range(8)],
                      "timestamp":datetime.datetime.now()}
                 msg["decoded"]=self.processor.decode_message(msg)
