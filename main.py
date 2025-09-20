@@ -4,7 +4,7 @@ from gui import MainWindow
 from PyQt6.QtWidgets import QApplication
 
 # Configuration variables for development
-ENABLE_TEST_MESSAGES = False  # Set to False to disable test message generation
+ENABLE_TEST_MESSAGES = True  # Set to False to disable test message generation
 TEST_MESSAGE_INTERVAL = 500   # Interval in milliseconds for test message updates (default: 500ms)
 VERBOSE_LOGGING = False        # Set to True to enable detailed logging output
 
