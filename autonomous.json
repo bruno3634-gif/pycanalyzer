@@ -1,0 +1,107 @@
+{
+    "ACU_MS": {
+        "id": 81,
+        "signals": [
+            {
+                "name": "Mission_Select",
+                "start": 0,
+                "length": 8,
+                "unit": null
+            }
+        ]
+    },
+    "JETSON_MS": {
+        "id": 97,
+        "signals": [
+            {
+                "name": "Mission_Select",
+                "start": 0,
+                "length": 8,
+                "unit": null
+            }
+        ]
+    },
+    "VCU_RPM": {
+        "id": 1296,
+        "signals": [
+            {
+                "name": "RPM",
+                "start": 0,
+                "length": 16,
+                "unit": "RPM"
+            }
+        ]
+    },
+    "Target_RPM": {
+        "id": 1280,
+        "signals": [
+            {
+                "name": "RPM",
+                "start": 0,
+                "length": 16,
+                "unit": "RPM"
+            }
+        ]
+    },
+    "ACU_IGN": {
+        "id": 113,
+        "signals": [
+            {
+                "name": "IGN",
+                "start": 0,
+                "length": 8,
+                "unit": null
+            },
+            {
+                "name": "IGN_SWITCH",
+                "start": 8,
+                "length": 8,
+                "unit": null
+            }
+        ]
+    },
+    "RD_JETSON": {
+        "id": 1298,
+        "signals": [
+            {
+                "name": "RD",
+                "start": 0,
+                "length": 8,
+                "unit": null
+            }
+        ]
+    },
+    "AS_STATE": {
+        "id": 1282,
+        "signals": [
+            {
+                "name": "STATE",
+                "start": 0,
+                "length": 8,
+                "unit": null
+            }
+        ]
+    },
+    "VCU_HV": {
+        "id": 129,
+        "signals": [
+            {
+                "name": "HV",
+                "start": 0,
+                "length": 8,
+                "unit": null
+            }
+        ]
+    },
+    "RES": {
+        "id": 401,
+        "signals": [
+            {
+                "name": "SIGNAL",
+                "start": 0,
+                "length": 8,
+                "unit": null
+            }
+        ]
+    }
+}
